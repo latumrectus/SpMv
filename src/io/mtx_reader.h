@@ -56,7 +56,7 @@ namespace io {
                 int r, c;
                 double v;
                 // .mtx file is 1-based index, convert to 0-based
-                file >> r >> c >> v;
+                ifs >> r >> c >> v;
                 triplets.push_back({r - 1, c - 1, v});
             }
 
@@ -93,8 +93,43 @@ namespace io {
         MPI_Bcast(all_cols.data(), g_nnz, MPI_INT, 0, MPI_COMM_WORLD);
         MPI_Bcast(all_values.data(), g_nnz, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
+        core::CSRMatrix mat;
+        mat.global_rows = g_rows;
+        mat.global_cols = g_cols;
 
+        core::CSRMatrix::partition(g_rows, rank, size, mat.local_rows, mat.rows_offset);
 
+        long curMat_start = mat.rows_offset;
+        long curMat_end = mat.local_rows + mat.rows_offset;
+        mat.row_ptr.reserve(mat.local_rows + 1);
+        mat.row_ptr.push_back(0);
+
+        long current_global_row = curMat_start;
+        for (long i = 0; i < g_nnz; ++i) {
+            int r = all_rows[i];
+
+            if (r >= curMat_end) break;
+
+            if (r >= curMat_start) {
+                while (current_global_row < r) {
+                    mat.row_ptr.push_back(mat.vals.size());
+                    current_global_row++;
+                }
+
+                // Store the data
+                mat.vals.push_back(all_values[i]);
+                mat.col_idx.push_back(all_cols[i]);
+            }
+        }
+
+        while (current_global_row < curMat_end) {
+            mat.row_ptr.push_back(mat.vals.size());
+            current_global_row++;
+        }
+
+        mat.nnz = mat.vals.size();
+
+        return mat;
 
     }
 }// namespace io

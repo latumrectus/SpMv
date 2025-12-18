@@ -4,11 +4,8 @@
 #include <string>
 #include <chrono>
 
-// Future Headers
-// #include "core/distributed_matrix.hpp"
-// #include "io/mtx_reader.hpp"
-// #include "comm/halo_exchange.hpp"
-// #include "compute/pagerank.hpp"
+#include "core/csr_matrix.h"
+#include "io/mtx_reader.h"
 
 // helper for timing
 using Clock = std::chrono::high_resolution_clock;
@@ -43,6 +40,13 @@ int main(int argc, char *argv[]) {
         // std::cout << " CUDA Devices : " << // for later
         std::cout << "==================================================" << '\n';
     }
+
+    // Load & Distribute
+    // Rank 0 reads -> Broadcasts -> Everyone filters their part
+    core::CSRMatrix matrix = io::read_matrix_market(input_file);
+
+    // Each rank will print its stats to check if the math was right
+    matrix.print_info(rank);
 
     MPI_Finalize();
     return 0;
