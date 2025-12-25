@@ -11,7 +11,10 @@ find_package(CUDAToolkit REQUIRED)
 
 add_executable(sparse src/main.cpp
         src/core/csr_matrix.h
-        src/io/mtx_reader.h)
+        src/io/mtx_reader.h
+        src/compute/spmv_cpu.h
+        src/comm/neighbourBatch.h
+        src/comm/neighbourBatch.cpp)
 
 target_link_libraries(sparse PRIVATE
         MPI::MPI_CXX
