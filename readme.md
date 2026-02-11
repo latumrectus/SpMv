@@ -1,10 +1,15 @@
+
 ---
 
 # Distributed Sparse Matrix–Vector Multiplication (SpMV) with MPI
 
 ## Overview
 
-This project implements a **communication-aware distributed Sparse Matrix–Vector Multiplication (SpMV)** engine in **C++ using MPI**, with a focus on **explicit communication planning**, **compute–communication overlap**, and **production-style software engineering**.
+This project implements a **communication-aware distributed Sparse Matrix–Vector Multiplication (SpMV)** engine in **C++ using MPI**, with a focus on:
+
+* Explicit communication planning
+* Compute–communication overlap
+* Production-style software engineering
 
 The system follows an **inspector–executor model**:
 
@@ -17,14 +22,14 @@ The project targets irregular, real-world sparse matrices and emphasizes **measu
 
 ## Key Features
 
-* **Distributed CSR storage** with deterministic 1D row partitioning
-* **Inspector–executor architecture** (static communication pattern)
-* **Sparse halo exchange** using precomputed neighbor batches
-* **Nonblocking MPI communication** (`MPI_Isend` / `MPI_Irecv`)
-* **Overlapped computation and communication**
-* **Hybrid MPI + OpenMP** parallelism
-* **Instrumentation for detailed performance breakdowns**
-* **Clean modular C++ design with CMake build system**
+* Distributed CSR storage with deterministic 1D row partitioning
+* Inspector–executor architecture (static communication pattern)
+* Sparse halo exchange using precomputed neighbor batches
+* Nonblocking MPI communication (`MPI_Isend`, `MPI_Irecv`)
+* Overlapped computation and communication
+* Hybrid MPI + OpenMP parallelism
+* Instrumentation for detailed performance breakdowns
+* Clean modular C++ design with CMake build system
 
 ---
 
@@ -41,13 +46,15 @@ dist-spmv/
 └── README.md
 ```
 
-### Core Concepts
+---
 
-#### Distributed CSR Matrix
+## Core Concepts
+
+### Distributed CSR Matrix
 
 Each MPI rank owns a contiguous block of rows of the global matrix in **Compressed Sparse Row (CSR)** format.
 
-```text
+```
 Global matrix A:
   rows [offset, offset + local_rows)
 ```
@@ -68,10 +75,10 @@ For each local nonzero `(i, j)`:
 * If non-local, record `j` in a **neighbor batch** for that rank
 
 ```cpp
-NeighborBatch {
-    needed_indices   // global column indices required from neighbor
-    received_values  // buffer for halo values
-}
+struct NeighborBatch {
+    std::vector<int> needed_indices;   // Global column indices required
+    std::vector<double> received_values; // Buffer for halo values
+};
 ```
 
 Only neighbors that are actually needed are stored (sparse communication graph).
@@ -82,7 +89,7 @@ Only neighbors that are actually needed are stored (sparse communication graph).
 
 Each rank initially knows:
 
-> “Which values I need from each neighbor”
+> “Which values I need from each neighbor.”
 
 A one-time **metadata exchange** makes this symmetric:
 
@@ -96,7 +103,7 @@ After this step, every rank knows:
 
 * What it must **send**
 * What it will **receive**
-* Exact message sizes and neighbors
+* Exact message sizes and neighbor relationships
 
 This completes the inspector phase.
 
@@ -106,16 +113,16 @@ This completes the inspector phase.
 
 Each SpMV iteration performs:
 
-1. **Pack send buffers** from local vector `x`
-2. **Post nonblocking receives** for halo values
-3. **Post nonblocking sends** to neighbors
-4. **Compute rows using only local data**
-5. **Wait for halo completion**
-6. **Compute rows dependent on halo data**
+1. Pack send buffers from local vector `x`
+2. Post nonblocking receives for halo values
+3. Post nonblocking sends to neighbors
+4. Compute rows using only local data
+5. Wait for halo completion
+6. Compute rows dependent on halo data
 
 This enables **true overlap of communication and computation**.
 
-```text
+```
 Communication  |=====>|
 Computation    |==LOCAL==|==REMOTE==|
 ```
@@ -124,7 +131,7 @@ Computation    |==LOCAL==|==REMOTE==|
 
 ## Parallelism Model
 
-* **MPI**: Distributed memory parallelism across ranks
+* **MPI**: Distributed-memory parallelism across ranks
 * **OpenMP**: Thread-level parallelism within each rank
 * Thread-safe halo buffers and deterministic execution
 
@@ -147,18 +154,18 @@ Metrics are logged per rank to CSV files for post-analysis.
 
 ### Datasets
 
-* SuiteSparse matrices (e.g. `web-Google`, `roadNet-CA`)
+* SuiteSparse matrices (e.g., `web-Google`, `roadNet-CA`)
 * Synthetic sparse matrices (optional)
 
 ### Experiments
 
 * **Strong scaling**: Fixed problem size, increasing MPI ranks
 * **Weak scaling**: Fixed rows per rank
-* **Overlap analysis**: Blocking vs nonblocking halo exchange
+* **Overlap analysis**: Blocking vs. nonblocking halo exchange
 
-Target result:
+**Target result:**
 
-> ≥15–25% speedup from overlapping communication on irregular matrices
+> ≥ 15–25% speedup from overlapping communication on irregular matrices
 
 ---
 
@@ -230,4 +237,3 @@ It closely mirrors techniques used in real HPC libraries such as **PETSc** and *
 Distributed systems • Parallel programming • Performance engineering
 
 ---
-
