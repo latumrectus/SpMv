@@ -40,24 +40,27 @@ namespace comm {
         return rem + (index - lucky_rows)/base;
     }
 
-    void inspector_exchange() {
-        int world_size;
+    CommPlan inspector_exchange(const core::CSRMatrix& mat) {
+        int world_size, my_rank;
         MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+        MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-        std::vector<int> send_counts(world_size, 0);
-        std::vector<int> receive_counts(world_size, 0);
+        CommPlan plan;
 
-        // important lesson: dont use the operator[] with hashmap because it'll insert by default if the value doesnt exist and in this case that'll ruin the sparsity of the hashmap
+        // prep MY request counts
+        std::vector request_counts(world_size, 0);
+        std::vector incoming_req_counts(world_size, 0);
+
+        // important lesson: dont use the operator[] with hashmap because it'll insert by default
         for (const auto& pair : batches) {
             int rank_id = pair.first;
             const NeighborBatch& batch = pair.second;
-            send_counts[rank_id] =
-                static_cast<int>(batch.needed_indices.size());
+            request_counts[rank_id] = static_cast<int>(batch.needed_indices.size());
         }
 
         MPI_Alltoall(
-            send_counts.data(), 1, MPI_INT,
-            receive_counts.data(), 1, MPI_INT,
+            request_counts.data(), 1, MPI_INT,
+            incoming_req_counts.data(), 1, MPI_INT,
             MPI_COMM_WORLD
         );
 
@@ -66,15 +69,15 @@ namespace comm {
         std::vector<int> rdispls(world_size);
 
         // Use exclusive prefix sum
-        std::exclusive_scan(send_counts.begin(), send_counts.end(), sdispls.begin(), 0);
-        std::exclusive_scan(receive_counts.begin(), receive_counts.end(), rdispls.begin(), 0);
+        std::exclusive_scan(request_counts.begin(), request_counts.end(), sdispls.begin(), 0);
+        std::exclusive_scan(incoming_req_counts.begin(), incoming_req_counts.end(), rdispls.begin(), 0);
 
         // Calculate total buffer sizes
-        int total_send = sdispls.back() + send_counts.back();
-        int total_recv = rdispls.back() + receive_counts.back();
+        int total_requests_out = sdispls.back() + request_counts.back();
+        int total_requests_in  = rdispls.back() + incoming_req_counts.back();
 
-        std::vector<int> send_buffer(total_send);
-        std::vector<int> recv_buffer(total_recv);
+        std::vector<int> requests_out_buf(total_requests_out);
+        std::vector<int> requests_in_buf(total_requests_in);
 
         // Iterate through the map to copy data into the pre-calculated positions
         for (const auto& pair : batches) {
@@ -86,13 +89,34 @@ namespace comm {
 
             std::copy(batch.needed_indices.begin(),
                       batch.needed_indices.end(),
-                      send_buffer.begin() + start_offset);
+                      requests_out_buf.begin() + start_offset);
         }
 
+        // Exchange the actual Indices
+        // requests_in_buf will now contain Global Indices that neighbors need ME to send THEM
         MPI_Alltoallv(
-            send_buffer.data(), send_counts.data(), sdispls.data(), MPI_INT,
-            recv_buffer.data(), receive_counts.data(), rdispls.data(), MPI_INT,
+            requests_out_buf.data(), request_counts.data(), sdispls.data(), MPI_INT,
+            requests_in_buf.data(), incoming_req_counts.data(), rdispls.data(), MPI_INT,
             MPI_COMM_WORLD
         );
+
+
+        plan.recv_counts = request_counts;
+        plan.recv_displs = sdispls;
+        plan.total_recv = total_requests_out;
+
+        plan.send_counts = incoming_req_counts;
+        plan.send_displs = rdispls;
+        plan.total_send = total_requests_in;
+
+        plan.pack_map.resize(total_requests_in);
+        long my_start_row = mat.rows_offset;
+
+        for (int i = 0; i < total_requests_in; i++) {
+            long global_idx = requests_in_buf[i];
+            plan.pack_map[i] = static_cast<int>(global_idx - my_start_row);
+        }
+
+        return plan;
     }
 }
