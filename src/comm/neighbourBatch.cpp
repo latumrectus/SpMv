@@ -119,4 +119,39 @@ namespace comm {
 
         return plan;
     }
+
+    void renumber_cols(core::CSRMatrix &mat, const CommPlan &plan, const std::unordered_map<int, NeighborBatch> &batches) {
+        int my_rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+
+        std::unordered_map<long, int> global_to_ghost_map;
+        int current_ghost_offset = 0;
+        int world_size;
+        MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+        for (int i = 0; i < world_size; i++) {
+            if (!batches.contains(i)) continue;
+
+            for (long global_idx : batches.at(i).needed_indices) {
+                global_to_ghost_map[global_idx] = current_ghost_offset++;
+            }
+        }
+
+        const long my_row_start = mat.rows_offset;
+        const long my_row_end   = mat.rows_offset + mat.local_rows;
+
+        for (long i = 0; i < mat.col_idx.size(); i++) {
+            long global_col = mat.col_idx[i];
+
+            if (global_col >= my_row_start && global_col < my_row_end) {
+                // Case 1: Local
+                mat.col_idx[i] = static_cast<int>(global_col - my_row_start);
+            } else {
+                // Case 2: Ghost
+                // It MUST be in the map
+                const int ghost_idx = global_to_ghost_map[global_col];
+                mat.col_idx[i] = mat.local_rows + ghost_idx;
+            }
+        }
+    }
 }

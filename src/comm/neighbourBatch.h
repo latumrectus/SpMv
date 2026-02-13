@@ -35,5 +35,6 @@ namespace comm {
     long get_owner(long index, long N, int size);
     void build_batches(const core::CSRMatrix& mat, int my_rank, int world_size);
     CommPlan inspector_exchange(const core::CSRMatrix& mat);
+    void renumber_cols(core::CSRMatrix& mat, const CommPlan& plan, const std::unordered_map<int, NeighborBatch> &batches);
 }
 
